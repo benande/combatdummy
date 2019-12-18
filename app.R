@@ -7,10 +7,13 @@ library(dplyr)
 library(tibble)
 
 # Define UI for application 
-ui <- navbarPage(title="Classic Warrior Combat Dummy",
+ui <- navbarPage(theme="style.css",title="Classic Warrior Combat Dummy",
     
     # Instructions Page
-    tabPanel("Instructions"),
+    tabPanel("Instructions",
+             tags$p("Welcome! This is a project I started mostly as an excuse to develop something with Shiny Server, and learn as much as possible about the details of warrior mechanics."),
+             tags$p("Before starting, please check the 'caveats' tab to see what's missing and what assumptions I've made in developing this."),
+             tags$p("To get started, enter the relevant information on each tab. For hit/crit/AP, enter totals fully buffed from the DPS spreadsheet.")),
     # Talent Entry
     tabPanel("Talents",
              column(6,
@@ -39,8 +42,8 @@ ui <- navbarPage(title="Classic Warrior Combat Dummy",
                             choiceNames = list("Dual Wield","Two-Handed"),
                             choiceValues = list("dualWield","twoHand")),
                checkboxInput("hoj","Hand of Justice",value=TRUE),
-               numericInput("sheetCrit","Sheet Crit Chance",value=0.0),
-               numericInput("sheetAP","Sheet Attack Power",value=0),
+               numericInput("sheetCrit","Sheet Crit Chance",value=30),
+               numericInput("sheetAP","Sheet Attack Power",value=1500),
                numericInput("gearHit","Hit Chance from Gear",value=6)
              ),
              column(6,
@@ -113,17 +116,22 @@ ui <- navbarPage(title="Classic Warrior Combat Dummy",
               tags$h2("Assumptions"),
               tags$ul(
                 tags$li("Unbridled Wrath is a flat 40% (not normalized) and triggers only on autoattacks."),
-                tags$li("Dodged auto attacks generate rage based on 75% of that damage that would have hit"),
+                tags$li("Dodged auto attacks generate rage based on 75% of that damage that would have hit."),
+                tags$li("Missed or Dodged special attacks other than Whirlwind refund 80% of the rage cost."),
+                tags$li("Flurry can trigger on any crit, but stacks are only consumed on autoattacks."),
+                tags$li("Fractional results for damage and rage calculations are rounded. It's possible that truncating is more accurate.")
               ),
              tags$h2("Model Quirks"),
              tags$ul(
                tags$li("This only models the normal rotation against a still target, hitting from behind. It does not include execute at all or use any cooldowns like Deathwish. Therefore, this should only be used for comparison and not for estimating real DPS on a particular boss."),
                tags$li("EVERYTHING in this model happens in 0.4s batches. It attempts to correctly order events that happen in between batch ticks."),
-               tags$li("The rotation logic is currently fixed (BT if off cooldown and enough rage; WW if off cooldown, enough rage, and at least 1 sec on BT; HS if 2+ secs on BT and WW and 40 rage; HmS if 3+ secs on BT and WW and 40 rage")
+               tags$li("The rotation logic is currently fixed (BT if off cooldown and enough rage; WW if off cooldown, enough rage, and at least 1 sec on BT; HS if 2+ secs on BT and WW and 40 rage; HmS if 3+ secs on BT and WW and 40 rage)"),
+               tags$li("This accounts for removing the off-hand dual-wield penalty while Heroic Strike is queued, but makes no attempt to model HS canceling.")
              ),
              tags$h2("Missing Features"),
              tags$ul(
-               tags$li("Gear - Would need to build out a database and interface"),
+               tags$li("Non-Fury Builds - No plans to make this work for Arms or Prot builds."),
+               tags$li("Gear Planner - Would need to build out a database and interface"),
                tags$li("2H Fury - Prompts don't currently do anything. This doesn't seem too bad, but requires additional work and a different ability rotation"),
                tags$li("WF Totem - This seems like a nightmare. Putting it off as long as possible"),
                tags$li("Proc Weapons - These have to be coded individually. This also includes Hand of Justice."),
@@ -166,7 +174,7 @@ server <- function(input, output) {
       
       # Talents
       hsCost <- 15-as.integer(input$impHS)
-      flurryBonus <- 0.1*as.integer(input$flurry)
+      flurryBonus <- ifelse(as.integer(input$flurry)>0,0.1+(0.05*(as.integer(input$flurry)-1)),0)
       flurryActive <- FALSE
       flurryStacks <- 0
       angerManagement <- as.logical(as.integer(input$angerMan))
@@ -182,7 +190,7 @@ server <- function(input, output) {
       mhSwingTimer <- 0.0
       mhCrusader <- FALSE # Need to create input
       mhCrusaderBuff <- FALSE # Need to actually code procs
-      mhCrusaderTimer <- 0.0
+      mhCrusaderTimer <- 0.0 # Need to include in timer section
       
       ohMinDmg <- input$OHMinDmg
       ohMaxDmg <- input$OHMaxDmg
@@ -191,7 +199,7 @@ server <- function(input, output) {
       ohSwingTimer <- 0.0
       ohCrusader <- FALSE # Need to create input
       ohCrusaderBuff <- FALSE # Need to actually code procs
-      ohCrusaderTimer <- 0.0
+      ohCrusaderTimer <- 0.0 # Need to include in timer section
       
       # Damage Stats
       finalCrit <- (input$sheetCrit/100) - 0.048 - 0.002 # .002 reduction due to nonexistant weaponskill sheet modifier. Remove this eventually
@@ -217,7 +225,6 @@ server <- function(input, output) {
       mhGlanceChance <- 0.4
       mhGlancePenLow <- min(1.3 - 0.05*mhSkillDiff,0.91)
       mhGlancePenHigh <- min(1.2 - 0.03*mhSkillDiff,0.99)
-      #mhAPFactor <- 
       
       ohSkillDiff <- 315 - ohSkill
       ohBaseMiss <- ifelse(ohSkillDiff > 10, 0.05 + ohSkillDiff*0.002, 0.05 + ohSkillDiff*0.001)
@@ -228,8 +235,6 @@ server <- function(input, output) {
       ohGlanceChance <- 0.4
       ohGlancePenLow <- min(1.3 - 0.05*ohSkillDiff,0.91)
       ohGlancePenHigh <- min(1.2 - 0.03*ohSkillDiff,0.99)
-      #ohAPFactor <- 
-
       
       swingOutcome <- function(attack){
         hitRoll <- runif(1)
@@ -251,7 +256,7 @@ server <- function(input, output) {
           critChance <- min(finalCrit,1-sum(missChance,dodgeChance,glanceChance))
         }
         if(attack %in% c("Bloodthirst","Whirlwind","Hamstring","Heroic Strike")){
-          missChance <- mhBaseMiss
+          missChance <- mhMissChance
           dodgeChance <- mhDodgeChance
           glanceChance <- 0
           critChance <- finalCrit
@@ -361,6 +366,19 @@ server <- function(input, output) {
         ))
       }
       
+      updateFlurry <- function(attack, outcome){
+        if(flurryActive & attack %in% c("MH Auto","OH Auto","Heroic Strike")) {
+          flurryStacks <- max(flurryStacks-1,0)
+          if(flurryStacks == 0) {flurryActive <- FALSE}
+        }
+        print(paste0(outcome, " ", flurryBonus))
+        if(outcome == "CRIT" & flurryBonus > 0){
+          flurryActive <- TRUE
+          flurryStacks <- 3
+        }
+        print(paste0(flurryBonus, " ", flurryActive, " ", flurryStacks))
+      }
+      
       ##################
       # Start Simulation
       ##################
@@ -377,7 +395,6 @@ server <- function(input, output) {
           if (mhSwingRemain <= ohSwingRemain & mhSwingRemain <= GCD) {
             mhSwingTimer <- mhSwingTimer - mhSpeed
             mhSwingRemain <- mhSpeed - mhSwingTimer
-            outcome <- "MISS" # Priming for flurry check later
             
             if(hsQueued){
               outcome <- swingOutcome("Heroic Strike")
@@ -385,20 +402,23 @@ server <- function(input, output) {
               rage <- updateRage("Heroic Strike", outcome, damage)
               hist <- logEvent("Heroic Strike", outcome, damage)
               hsQueued <- FALSE
+              if(outcome == "CRIT" & flurryBonus > 0){
+                flurryActive <- TRUE
+                flurryStacks <- 3
+              }
             } else {
               outcome <- swingOutcome("MH Auto")
               damage <- swingDamage("MH Auto", outcome)
               rage <- updateRage("MH Auto", outcome, damage)
               hist <- logEvent("MH Auto", outcome, damage)
-            }
-            
-            if(flurryActive) {
-              flurryStacks <- max(flurryStacks-1,0)
-              if(flurryStacks == 0) {flurryActive <- FALSE}
-            }
-            if(outcome == "CRIT" & flurryBonus > 0){
-              flurryActive <- TRUE
-              flurryStacks <- 3
+              if(flurryActive) {
+                flurryStacks <- max(flurryStacks-1,0)
+                if(flurryStacks == 0) {flurryActive <- FALSE}
+              }
+              if(outcome == "CRIT" & flurryBonus > 0){
+                flurryActive <- TRUE
+                flurryStacks <- 3
+              }
             }
           }
           if (ohSwingRemain < mhSwingRemain & ohSwingRemain <= GCD) {
@@ -409,7 +429,6 @@ server <- function(input, output) {
             damage <- swingDamage("OH Auto", outcome)
             rage <- updateRage("OH Auto", outcome, damage)
             hist <- logEvent("OH Auto", outcome, damage)
-          
             if(flurryActive) {
               flurryStacks <- max(flurryStacks-1,0)
               if(flurryStacks == 0) {flurryActive <- FALSE}
@@ -421,8 +440,7 @@ server <- function(input, output) {
           }
           if (GCD <= mhSwingRemain & GCD <= ohSwingRemain & useGCD == 1) {
             # Rotation Logic to choose ability for GCD
-            outcome <- "MISS" # Priming for flurry check later on
-            if(bloodthirstCD <= 0 & rage >= 30){
+            if(bloodthirstCD <= 0 & rage >= 30 & useGCD == 1){
               outcome <- swingOutcome("Bloodthirst")
               damage <- swingDamage("Bloodthirst", outcome)
               rage <- updateRage("Bloodthirst", outcome, damage)
@@ -430,8 +448,12 @@ server <- function(input, output) {
               useGCD <- 0
               hist <- logEvent("Bloodthirst", outcome, damage)
               bloodthirstCD <- bloodthirstCD + 6
+              if(outcome == "CRIT" & flurryBonus > 0){
+                flurryActive <- TRUE
+                flurryStacks <- 3
+              }
             }
-            if(whirlwindCD <= 0 & rage >= 25 & bloodthirstCD >= 1){
+            if(whirlwindCD <= 0 & rage >= 25 & bloodthirstCD >= 1 & useGCD == 1){
               outcome <- swingOutcome("Whirlwind")
               damage <- swingDamage("Whirlwind", outcome)
               rage <- updateRage("Whirlwind", outcome, damage)
@@ -439,25 +461,29 @@ server <- function(input, output) {
               useGCD <- 0
               hist <- logEvent("Whirlwind", outcome, damage)
               whirlwindCD <- whirlwindCD + 10
+              if(outcome == "CRIT" & flurryBonus > 0){
+                flurryActive <- TRUE
+                flurryStacks <- 3
+              }
             }
             if(whirlwindCD >= 2 & bloodthirstCD >= 2 & rage >= 40 & hsQueued == FALSE){
               hsQueued <- TRUE
             }
-            if(whirlwindCD >= 3 & bloodthirstCD >= 3 & rage >= 40){
+            if(whirlwindCD >= 3 & bloodthirstCD >= 3 & rage >= 40 & useGCD == 1){
               outcome <- swingOutcome("Hamstring")
               damage <- swingDamage("Hamstring", outcome)
               rage <- updateRage("Hamstring", outcome, damage)
               GCD <- GCD + 1.5
               useGCD <- 0
               hist <- logEvent("Hamstring", outcome, damage)
+              if(outcome == "CRIT" & flurryBonus > 0){
+                flurryActive <- TRUE
+                flurryStacks <- 3
+              }
             }
-            if(outcome == "CRIT" & flurryBonus > 0){
-              flurryActive <- TRUE
-              flurryStacks <- 3
-            }
-            if(useGCD == 1){
-              useGCD <- 0
+            if(useGCD == 1){ # Went through whole rotation and GCD was unused
               if(GCD < 0){GCD <- 0}
+              useGCD <- 0
             }
           } 
         }
