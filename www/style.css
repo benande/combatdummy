@@ -3,3 +3,15 @@
 body {
     font-family: 'Titillium Web', sans-serif;
 }
+
+.ui-box {
+  display: inline-block;
+  background-color: rgb(95%,95%,95%);
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 5px;
+  border-color: rgb(20%,20%,20%);
+  padding: 5px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}

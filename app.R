@@ -89,26 +89,23 @@ ui <- navbarPage(theme="style.css",title="Classic Warrior Combat Dummy",
              ),
     # Results
     tabPanel("Simulation",
-             sidebarPanel(
-                 sliderInput("mins",
-                             "Minutes of Combat to Simulate:",
-                             min = 1,max = 10,value = 5),
-                 actionButton("start","Begin Simulation")
+             tags$div(class="ui-box",
+               sliderInput("mins","Minutes of Combat to Simulate:",min = 1,max = 10,value = 5),
+               actionButton("start","Begin Simulation")
              ),
-             mainPanel(
-               textOutput("overallDPS"),
-               textOutput("flurryUptime"),
-               textOutput("hsUptime"),
-               tableOutput("abilityTable"),
-               tags$h4("Main Hand Auto Attacks"),
-               tableOutput("mhAutoTable"),
-               tags$h4("Off Hand Auto Attacks"),
-               tableOutput("ohAutoTable"),
-               tags$h4("Bloodthirst"),
-               tableOutput("btTable"),
-               tags$h4("Full Log"),
-               tableOutput("fullTable")
-             )
+             textOutput("overallDPS"),
+             textOutput("flurryUptime"),
+             textOutput("hsUptime"),
+             tags$h4("Ability Breakdown"),
+             tableOutput("abilityTable"),
+             tags$h4("Main Hand Auto Attacks"),
+             tableOutput("mhAutoTable"),
+             tags$h4("Off Hand Auto Attacks"),
+             tableOutput("ohAutoTable"),
+             tags$h4("Bloodthirst"),
+             tableOutput("btTable"),
+             tags$h4("Full Log"),
+             tableOutput("fullTable")
         ),
     # Caveats and Assumptions
     tabPanel("Caveats",
