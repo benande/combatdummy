@@ -392,7 +392,7 @@ server <- function(input, output) {
         # Use abilities in order they came off cooldown between batches
         while (mhSwingRemain <= 0 | ohSwingRemain <= 0 | (GCD <= 0 & useGCD == 1)) {
           #print(paste0("mhSwingRemain: ",mhSwingRemain," ohSwingRemain: ",ohSwingRemain," GCD: ",GCD," useGCD: ",useGCD))
-          if (mhSwingRemain <= ohSwingRemain & mhSwingRemain <= GCD) {
+          if (mhSwingRemain <= 0 & mhSwingRemain <= ohSwingRemain & mhSwingRemain <= GCD) {
             mhSwingTimer <- mhSwingTimer - mhSpeed
             mhSwingRemain <- mhSpeed - mhSwingTimer
             
@@ -421,7 +421,7 @@ server <- function(input, output) {
               }
             }
           }
-          if (ohSwingRemain < mhSwingRemain & ohSwingRemain <= GCD) {
+          if (ohSwingRemain <= 0 & ohSwingRemain < mhSwingRemain & ohSwingRemain <= GCD) {
             ohSwingTimer <- ohSwingTimer - ohSpeed
             ohSwingRemain <- ohSpeed - ohSwingTimer
             
@@ -438,7 +438,7 @@ server <- function(input, output) {
               flurryStacks <- 3
             }
           }
-          if (GCD <= mhSwingRemain & GCD <= ohSwingRemain & useGCD == 1) {
+          if (GCD <= 0 & GCD <= mhSwingRemain & GCD <= ohSwingRemain & useGCD == 1) {
             # Rotation Logic to choose ability for GCD
             if(bloodthirstCD <= 0 & rage >= 30 & useGCD == 1){
               outcome <- swingOutcome("Bloodthirst")
